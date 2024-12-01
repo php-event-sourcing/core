@@ -10,23 +10,27 @@ use DbalEs\Subscription\SubscriptionQuery;
 class PollingProjection
 {
     public function __construct(
-        private string $projectionName,
+        private string $name,
         private Projector $projector,
         private SubscriptionLoader $subscriptionLoader,
-        private SubscriptionQuery $subscriptionQuery,
+        private PollingProjectionManager $projectionManager,
+        private SubscriptionQuery $subscriptionQuery = new SubscriptionQuery(),
     ) {
     }
 
-    public function run(ProjectionState $state): ProjectionState
+    public function run(): int
     {
-        $position = $state->position;
+        $position = $this->projectionManager->lockState($this->name);
         $eventStream = $this->subscriptionLoader->read($this->subscriptionQuery->withPosition($position));
 
+        $count = 0;
         foreach ($eventStream as $event) {
             $this->projector->project($event);
             $position = $event->eventId;
+            $count++;
         }
 
-        return $state->withPosition($position);
+        $this->projectionManager->releaseState($this->name, $position);
+        return $count;
     }
 }

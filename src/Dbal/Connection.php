@@ -7,4 +7,7 @@ namespace DbalEs\Dbal;
 interface Connection
 {
     public function prepare(string $query): Statement;
+    public function beginTransaction(): bool;
+    public function commit(): bool;
+    public function rollBack(): void;
 }

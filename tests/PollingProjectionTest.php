@@ -10,8 +10,9 @@ use DbalEs\Event;
 use DbalEs\EventStreamId;
 use DbalEs\Postgres\PostgresEventStore;
 use DbalEs\Projection\PollingProjection;
-use DbalEs\Projection\ProjectionState;
+use DbalEs\Projection\PollingProjectionState;
 use DbalEs\Subscription\SubscriptionQuery;
+use DbalEs\Test\InMemoryPollingProjectionManager;
 use DbalEsTests\Fixtures\InMemoryEventCounterProjector;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
@@ -32,9 +33,9 @@ class PollingProjectionTest extends TestCase
         $streamId = new EventStreamId(Uuid::v4());
 
         $projector = new InMemoryEventCounterProjector();
-        $projection = new PollingProjection('test', $projector, $eventStore, new SubscriptionQuery(streamIds: [$streamId->streamId]));
+        $projection = new PollingProjection('test', $projector, $eventStore, new InMemoryPollingProjectionManager(), new SubscriptionQuery(streamIds: [$streamId->streamId]));
 
-        $state = $projection->run(new ProjectionState());
+        $projection->run();
 
         self::assertEquals(0, $projector->getCounter());
 
@@ -43,7 +44,7 @@ class PollingProjectionTest extends TestCase
             new Event('event_type', ['data' => 'value']),
         ]);
 
-        $state = $projection->run($state);
+        $projection->run();
 
         self::assertEquals(2, $projector->getCounter());
 
@@ -51,7 +52,7 @@ class PollingProjectionTest extends TestCase
             new Event('event_type', ['data' => 'value']),
         ]);
 
-        $state = $projection->run($state);
+        $projection->run();
 
         self::assertEquals(3, $projector->getCounter());
     }

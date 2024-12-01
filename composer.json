@@ -22,10 +22,16 @@
     ],
     "require": {
         "php": "^8.2",
-        "doctrine/dbal": "^3.0"
+        "doctrine/dbal": "^3.0",
+        "psr/event-dispatcher": "^1.0"
     },
     "require-dev": {
+        "ext-pdo": "*",
+        "ext-pdo_pgsql": "*",
         "phpunit/phpunit": "^11",
-        "symfony/uid": "^7.1"
+        "symfony/uid": "^7.1",
+        "symfony/event-dispatcher": "^7.2",
+        "symfony/process": "^7.2",
+        "symfony/console": "^7.2"
     }
 }

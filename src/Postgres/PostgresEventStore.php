@@ -12,11 +12,13 @@ use DbalEs\PersistedEvent;
 use DbalEs\Subscription\SubscriptionLoader;
 use DbalEs\Subscription\SubscriptionPosition;
 use DbalEs\Subscription\SubscriptionQuery;
+use Psr\EventDispatcher\EventDispatcherInterface;
 
 class PostgresEventStore implements EventStore, SubscriptionLoader
 {
     public function __construct(
-        private Connection $connection
+        private Connection $connection,
+        private ?PostgresProjectionManager $projectionManager = null,
     ) {
     }
 
@@ -58,6 +60,8 @@ SQL);
         } else {
             $this->connection->prepare('UPDATE public.es_stream SET version = ? WHERE stream_id = ?')->execute([$version, $eventStreamId->streamId]);
         }
+
+        $this->projectionManager?->run($persistedEvents);
 
         return $persistedEvents;
     }
@@ -120,5 +124,15 @@ SQL;
                 new EventStreamId($row['stream_id'], (int) $row['version']),
             );
         }
+    }
+
+    public function connection(): Connection
+    {
+        return $this->connection;
+    }
+
+    public function projectionManager(): ?PostgresProjectionManager
+    {
+        return $this->projectionManager;
     }
 }

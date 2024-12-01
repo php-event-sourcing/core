@@ -19,4 +19,19 @@ class PdoConnection implements Connection
     {
         return new PdoStatement($this->pdo->prepare($query));
     }
+
+    public function beginTransaction(): bool
+    {
+        return $this->pdo->beginTransaction();
+    }
+
+    public function commit(): bool
+    {
+        return $this->pdo->commit();
+    }
+
+    public function rollBack(): void
+    {
+        $this->pdo->rollBack();
+    }
 }

@@ -8,6 +8,5 @@ use DbalEs\PersistedEvent;
 
 interface Projector
 {
-
     public function project(PersistedEvent $event): void;
 }
