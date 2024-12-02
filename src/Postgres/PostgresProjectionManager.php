@@ -6,14 +6,13 @@ namespace DbalEs\Postgres;
 
 use DbalEs\Dbal\Connection;
 use DbalEs\PersistedEvent;
-use DbalEs\Projection\PollingProjectionManager;
 use DbalEs\Projection\Projector;
 use DbalEs\Projection\ProjectorWithSetup;
-use DbalEs\Subscription\SubscriptionLoader;
+use DbalEs\Subscription\PersistentSubscriptions;
 use DbalEs\Subscription\SubscriptionPosition;
 use DbalEs\Subscription\SubscriptionQuery;
 
-class PostgresProjectionManager implements PollingProjectionManager
+class PostgresProjectionManager
 {
     /**
      * @param array<string, Projector> $projectors
@@ -89,12 +88,12 @@ SQL);
         }
     }
 
-    public function catchupProjection(string $projectorName, SubscriptionLoader $subscriptionLoader, int $missingEventsMaxLoops = 100): void
+    public function catchupProjection(string $projectorName, PersistentSubscriptions $persistentSubscriptions, int $missingEventsMaxLoops = 100): void
     {
         $this->connection->beginTransaction();
         try {
             $statement = $this->connection->prepare(<<<SQL
-                SELECT projector, state, metadata FROM es_projection
+                SELECT projector, state FROM es_projection
                 WHERE projector = ?
                 FOR UPDATE
                 SQL);
@@ -107,21 +106,40 @@ SQL);
                 throw new \RuntimeException('Projection is not in catchup state');
             }
             $projector = $this->getProjector($projectorName);
-            if ($projection['metadata']) {
-                $metadata = json_decode($projection['metadata'], true);
-                $transactionId = (int) $metadata['transaction_id'] ?? throw new \RuntimeException('Missing transaction_id in metadata');
-                $eventId = (int) $metadata['event_id'] ?? throw new \RuntimeException('Missing event_id in metadata');
-                $position = new SubscriptionPosition($transactionId, $eventId);
-            } else {
-                $position = null;
-            }
 
-            $lastPosition = $position;
-            foreach ($subscriptionLoader->read(new SubscriptionQuery(from: $position)) as $event) {
-                $projector->project($event);
-                $lastPosition = $event->eventId;
-            }
+            $statement = $this->connection->prepare(<<<SQL
+                UPDATE es_projection
+                SET state = 'catching_up'
+                WHERE projector = ?
+                SQL);
+            $statement->execute([$projectorName]);
+            $this->connection->commit();
+        } catch (\Throwable $e) {
+            $this->connection->rollBack();
+            throw $e;
+        }
 
+        $persistentSubscriptions->createSubscription($projectorName, new SubscriptionQuery(limit: 1000));
+        do {
+            $page = $persistentSubscriptions->read($projectorName);
+            if ($page->events === []) {
+                break;
+            }
+            $this->connection->beginTransaction();
+            try {
+                foreach ($page->events as $event) {
+                    $projector->project($event);
+                }
+                $persistentSubscriptions->ack($page);
+                $this->connection->commit();
+            } catch (\Throwable $e) {
+                $this->connection->rollBack();
+                throw $e;
+            }
+        } while (true);
+
+        $this->connection->beginTransaction();
+        try {
             $lastTransactionIdStatement = $this->connection->prepare(<<<SQL
                 UPDATE es_projection
                 SET state = 'inline', after_transaction_id = pg_snapshot_xmax(pg_current_snapshot())
@@ -137,6 +155,7 @@ SQL);
             throw $e;
         }
 
+
         // Execute missing events
         $missingEventsLoop = 0;
         $currentXminStatement = $this->connection->prepare('SELECT pg_snapshot_xmin(pg_current_snapshot())');
@@ -145,12 +164,12 @@ SQL);
             try {
                 $currentXminStatement->execute();
                 $currentXmin = $currentXminStatement->fetchColumn();
-                foreach ($subscriptionLoader->read(new SubscriptionQuery(from: $lastPosition)) as $event) {
+                $page = $persistentSubscriptions->read($projectorName);
+                foreach ($page->events as $event) {
                     if ($event->eventId->transactionId > $lastTransactionId) {
                         break;
                     }
                     $projector->project($event);
-                    $lastPosition = $event->eventId;
                 }
 
                 $this->connection->commit();
@@ -164,40 +183,8 @@ SQL);
             }
 
             $missingEventsLoop++;
-            \sleep(1);
+            \usleep(10000);
         }
-    }
-
-    public function lockState(string $projectionName): ?SubscriptionPosition
-    {
-        $statement = $this->connection->prepare(<<<SQL
-            SELECT transaction_id, event_id FROM es_subscription
-            WHERE projector = ?
-            FOR UPDATE
-            SQL);
-        $statement->execute([$projectionName]);
-
-        $position = $statement->fetch();
-
-        return $position ? new SubscriptionPosition($position['transaction_id'], $position['event_id']) : null;
-    }
-
-    public function releaseState(string $projectionName, ?SubscriptionPosition $position): void
-    {
-        if (!$position) {
-            return;
-        }
-        $this->connection->prepare(<<<SQL
-            INSERT INTO es_subscription (transaction_id, event_id, projector)
-            VALUES (?, ?, ?)
-            ON CONFLICT DO
-            UPDATE SET transaction_id = ?, event_id = ?
-            WHERE projector = ?
-            SQL)
-            ->execute([
-                $position->transactionId, $position->sequenceNumber, $projectionName,
-                $position->transactionId, $position->sequenceNumber, $projectionName,
-            ]);
     }
 
     private function getProjector(string $projectorName): Projector

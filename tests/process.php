@@ -6,7 +6,9 @@ use DbalEs\Dbal\Pdo\PdoConnection;
 use DbalEs\Event;
 use DbalEs\EventStreamId;
 use DbalEs\Postgres\PostgresEventStore;
+use DbalEs\Postgres\PostgresPersistentSubscriptions;
 use DbalEs\Postgres\PostgresProjectionManager;
+use DbalEs\Subscription\PersistentSubscriptions;
 use DbalEsTests\Fixtures\InMemoryEventCounterProjector;
 use DbalEsTests\Fixtures\PostgresEventCounterProjector;
 use DbalEsTests\Fixtures\PostgresTableProjector;
@@ -37,6 +39,11 @@ function createEventStore(): PostgresEventStore
 
 
     return new PostgresEventStore($connection, $postgresProjectionManager);
+}
+
+function createPersistentSubscriptions(PostgresEventStore $eventStore): PersistentSubscriptions
+{
+    return new PostgresPersistentSubscriptions($eventStore->connection(), $eventStore);
 }
 
 $application->register('long-running-append')
@@ -88,7 +95,7 @@ $application->register("catchup-projection")
         $output->writeln('Running catchup projection');
 
         try {
-            $projectionManager->catchupProjection('catchup', $eventStore);
+            $projectionManager->catchupProjection('catchup', createPersistentSubscriptions($eventStore));
         } catch (\Throwable $e) {
             $output->writeln(sprintf('Error occurred: %s', $e->getMessage()));
             throw $e;
@@ -108,7 +115,7 @@ $application->register("init")
         $projectionManager->removeProjection('catchup');
 
         $projectionManager->addProjection('base');
-        $projectionManager->catchupProjection('base', $eventStore);
+        $projectionManager->catchupProjection('base', createPersistentSubscriptions($eventStore));
 
         $projectionManager->addProjection('catchup');
 

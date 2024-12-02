@@ -28,4 +28,9 @@ class PdoStatement implements Statement
     {
         return $this->pdoStatement->fetchColumn($columnNumber);
     }
+
+    public function rowCount(): int
+    {
+        return $this->pdoStatement->rowCount();
+    }
 }

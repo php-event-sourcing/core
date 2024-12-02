@@ -11,4 +11,9 @@ readonly class SubscriptionPosition
         public int $sequenceNumber,
     ) {
     }
+
+    public static function start(): self
+    {
+        return new self(0, 0);
+    }
 }

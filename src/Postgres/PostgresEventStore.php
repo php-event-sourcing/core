@@ -107,11 +107,13 @@ SQL);
         }
 
         $where = $whereParts ? 'WHERE ' . implode(' AND ', $whereParts) : '';
+        $limit = $query->limit ? "LIMIT {$query->limit}" : '';
 
         $query = <<<SQL
 SELECT e.id, e.transaction_id, e.stream_id, e.version, e.event_type, e.json_data FROM es_event e 
-$where
+{$where}
 ORDER BY e.TRANSACTION_ID, e.ID
+{$limit}
 SQL;
 
         $statement = $this->connection->prepare($query);

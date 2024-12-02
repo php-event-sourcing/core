@@ -8,6 +8,7 @@ use DbalEs\Dbal\Pdo\PdoConnection;
 use DbalEs\Event;
 use DbalEs\EventStreamId;
 use DbalEs\Postgres\PostgresEventStore;
+use DbalEs\Postgres\PostgresPersistentSubscriptions;
 use DbalEs\Postgres\PostgresProjectionManager;
 use DbalEsTests\Fixtures\InMemoryEventCounterProjector;
 use DbalEsTests\Fixtures\PostgresTableProjector;
@@ -37,6 +38,7 @@ class CatchUpSyncProjectionTest extends TestCase
         $postgresProjectionManager->addProjection($projectionName);
 
         $eventStore = new PostgresEventStore($connection, $postgresProjectionManager);
+        $persistentSubscriptions = new PostgresPersistentSubscriptions($connection, $eventStore);
 
 
         $eventStore->append($streamId, [
@@ -51,7 +53,7 @@ class CatchUpSyncProjectionTest extends TestCase
 
         self::assertEquals(0, $counterProjection->getCounter());
 
-        $postgresProjectionManager->catchupProjection($projectionName, $eventStore);
+        $postgresProjectionManager->catchupProjection($projectionName, $persistentSubscriptions);
 
         self::assertEquals(7, $counterProjection->getCounter());
 
@@ -81,6 +83,7 @@ class CatchUpSyncProjectionTest extends TestCase
         $this->profileExecutionTime('Init process', function () use ($initProcess) {
             $initProcess->run();
         });
+        self::assertTrue($initProcess->isSuccessful(), "Init process failed: " . $initProcess->getOutput());
         self::assertEmpty($counterCatchupProjection->getState());
 
         $longRunningProcess->start();

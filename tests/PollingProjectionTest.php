@@ -9,10 +9,9 @@ use DbalEs\Dbal\Pdo\PdoConnection;
 use DbalEs\Event;
 use DbalEs\EventStreamId;
 use DbalEs\Postgres\PostgresEventStore;
+use DbalEs\Postgres\PostgresPersistentSubscriptions;
 use DbalEs\Projection\PollingProjection;
-use DbalEs\Projection\PollingProjectionState;
 use DbalEs\Subscription\SubscriptionQuery;
-use DbalEs\Test\InMemoryPollingProjectionManager;
 use DbalEsTests\Fixtures\InMemoryEventCounterProjector;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\Test;
@@ -29,11 +28,14 @@ class PollingProjectionTest extends TestCase
         $connection = new PdoConnection($pdo);
 
         $eventStore = new PostgresEventStore($connection);
+        $persistentSubscriptions = new PostgresPersistentSubscriptions($connection, $eventStore);
 
         $streamId = new EventStreamId(Uuid::v4());
 
         $projector = new InMemoryEventCounterProjector();
-        $projection = new PollingProjection('test', $projector, $eventStore, new InMemoryPollingProjectionManager(), new SubscriptionQuery(streamIds: [$streamId->streamId]));
+        $persistentSubscriptions->deleteSubscription(__METHOD__);
+        $persistentSubscriptions->createSubscription(__METHOD__, new SubscriptionQuery(streamIds: [$streamId->streamId]));
+        $projection = new PollingProjection(__METHOD__, $projector, $persistentSubscriptions);
 
         $projection->run();
 

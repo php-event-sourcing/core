@@ -10,6 +10,7 @@ readonly class SubscriptionQuery
         public array $streamIds = [],
         public ?SubscriptionPosition $from = null,
         public bool $allowGaps = false,
+        public ?int $limit = null,
     ) {
     }
 
@@ -19,6 +20,7 @@ readonly class SubscriptionQuery
             $this->streamIds,
             $position,
             $this->allowGaps,
+            $this->limit,
         );
     }
 }
